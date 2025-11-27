@@ -1,0 +1,41 @@
+# NetraAI Backend Dependencies
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Data Validation & Settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# Vector Database
+chromadb>=0.4.18
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# AI Providers
+groq>=0.4.0
+google-generativeai>=0.3.0
+
+# Web Scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Utilities
+python-dotenv>=1.0.0
+loguru>=0.7.2
+
+# Rate Limiting & Caching
+slowapi>=0.1.9
+cachetools>=5.3.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0

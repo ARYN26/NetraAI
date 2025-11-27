@@ -1,3 +1,6 @@
+
+User
+i want ot make a tantra ai chat bot which allows users to get knowledge of tantric and mantrik practices straight from scriptures as well as meditations
 That is a great pivot. Netra (The Eye) is a strong, spiritual name.
 
 To meet your requirement for a modular, changeable system that is also fast and simple, we will move away from Supabase (which requires SQL setup) and use ChromaDB.
