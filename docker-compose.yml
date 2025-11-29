@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: netra-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist ChromaDB data
+      - ./backend/netra_db:/app/netra_db
+      # Persist user data (consider migrating to a proper database)
+      - netra_user_data:/app/data
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  netra_user_data:

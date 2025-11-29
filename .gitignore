@@ -1,6 +1,7 @@
 # Environment files (contain secrets)
 .env
 *.env.local
+backend/.env
 
 # Python
 __pycache__/
@@ -14,6 +15,15 @@ ENV/
 
 # ChromaDB data
 netra_db/
+backend/netra_db/
+
+# Sentence Transformers cache
+st_cache/
+backend/st_cache/
+
+# User data files (local development)
+backend/users.json
+backend/otps.json
 
 # Node
 node_modules/
@@ -32,3 +42,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Docker (keep docker-compose.yml tracked)
+.docker/
+
+# DuckDNS token (if stored locally)
+duckdns/
