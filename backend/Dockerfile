@@ -7,6 +7,11 @@ ENV PYTHONUNBUFFERED=1
 ENV SENTENCE_TRANSFORMERS_HOME=/app/st_cache
 
 COPY requirements.txt .
+
+# Install CPU-only PyTorch FIRST (saves ~2GB vs CUDA version)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Then install other requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
