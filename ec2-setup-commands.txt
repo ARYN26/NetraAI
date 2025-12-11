@@ -1,0 +1,65 @@
+============================================
+NETRA API - EC2 HTTPS SETUP COMMANDS
+============================================
+
+# 1. SSH INTO EC2
+ssh -i ~/Downloads/"key[air.pem" ec2-user@3.136.75.189
+
+
+# 2. INSTALL NGINX AND CERTBOT
+sudo yum update -y
+sudo yum install -y nginx
+sudo yum install -y certbot python3-certbot-nginx
+
+# 3. CREATE NGINX CONFIG
+sudo tee /etc/nginx/conf.d/netra-api.conf > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name netra-api.duckdns.org;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+
+# 4. START NGINX
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# 5. GET SSL CERTIFICATE
+sudo certbot --nginx -d netra-api.duckdns.org
+
+# 6. UPDATE CORS IN YOUR BACKEND .ENV FILE
+# Navigate to your backend directory and edit .env:
+# Add this line:
+# CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://netra-ai-two.vercel.app
+
+# 7. RESTART YOUR BACKEND
+# (depends on how you're running it - docker-compose restart, or kill/restart uvicorn)
+
+# 8. TEST IT WORKS
+curl https://netra-api.duckdns.org/health
+
+============================================
+VERCEL CHANGES (do in browser)
+============================================
+1. Go to: https://vercel.com/dashboard
+2. Click your project -> Settings -> Environment Variables
+3. Change VITE_API_URL from:
+   http://3.136.75.189:8000
+   TO:
+   https://netra-api.duckdns.org
+4. Redeploy your app
+
+============================================
+DONE! Test your chat at https://netra-ai-two.vercel.app
+============================================
