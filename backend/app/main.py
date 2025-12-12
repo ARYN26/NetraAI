@@ -85,16 +85,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS (tightened for production)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],  # Explicit methods only
-    allow_headers=["Content-Type", "Authorization"],  # Explicit headers only
-    max_age=3600,  # Cache preflight for 1 hour
-)
-
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -106,6 +96,17 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     return response
+
+
+# Configure CORS - MUST be added LAST so it runs FIRST (handles preflight)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
+)
 
 # Configure rate limiting
 app.state.limiter = limiter
