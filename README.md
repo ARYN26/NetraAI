@@ -2,7 +2,7 @@
 
 A spiritual AI guide that provides authentic knowledge about tantric practices, mantras, and meditation techniques sourced from scriptures.
 
-database for mantras and meditation from om swamis book
+
 
 ## Features
 
