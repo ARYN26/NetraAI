@@ -3,7 +3,7 @@ import { useState } from 'react'
 /**
  * Input area for chat submission (matches template)
  */
-export default function InputArea({ onSend, isLoading }) {
+export default function InputArea({ onSend, onStop, isLoading }) {
   const [input, setInput] = useState('')
 
   const handleSubmit = (e) => {
@@ -34,12 +34,13 @@ export default function InputArea({ onSend, isLoading }) {
           className="w-full h-12 px-4 pr-12 rounded-lg bg-white/5 border border-white/10 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-shadow disabled:opacity-50"
         />
         <button
-          type="submit"
-          disabled={!input.trim() || isLoading}
+          type={isLoading ? "button" : "submit"}
+          onClick={isLoading ? onStop : undefined}
+          disabled={!isLoading && !input.trim()}
           className="absolute inset-y-0 right-0 flex items-center justify-center w-12 text-gray-400 hover:text-primary transition-colors disabled:opacity-50"
         >
           {isLoading ? (
-            <span className="material-symbols-outlined animate-spin">progress_activity</span>
+            <span className="material-symbols-outlined text-red-400 hover:text-red-300">stop_circle</span>
           ) : (
             <span className="material-symbols-outlined">send</span>
           )}

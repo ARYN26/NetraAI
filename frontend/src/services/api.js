@@ -64,12 +64,9 @@ export async function sendChatMessage(question) {
  * @param {function} onChunk - Callback for each text chunk
  * @param {function} onDone - Callback when streaming is complete (receives sources)
  * @param {function} onError - Callback for errors
+ * @param {AbortSignal} signal - Optional abort signal for cancellation
  */
-export async function sendChatMessageStream(question, onChunk, onDone, onError) {
-  const controller = new AbortController()
-  // Longer timeout for streaming (2 minutes)
-  const timeoutId = setTimeout(() => controller.abort(), 120000)
-
+export async function sendChatMessageStream(question, onChunk, onDone, onError, signal = null) {
   try {
     const response = await fetch(`${API_URL}/chat/stream`, {
       method: 'POST',
@@ -77,7 +74,7 @@ export async function sendChatMessageStream(question, onChunk, onDone, onError) 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ question }),
-      signal: controller.signal,
+      signal,
     })
 
     if (!response.ok) {
@@ -116,12 +113,10 @@ export async function sendChatMessageStream(question, onChunk, onDone, onError) 
     }
   } catch (err) {
     if (err.name === 'AbortError') {
-      onError(new Error('Request timed out. Please try again.'))
-    } else {
-      onError(err)
+      // User cancelled - not an error, just return silently
+      return
     }
-  } finally {
-    clearTimeout(timeoutId)
+    onError(err)
   }
 }
 

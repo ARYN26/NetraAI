@@ -140,6 +140,28 @@ export function useConversations() {
     }))
   }, [activeId])
 
+  // Update the last message in the active conversation (for streaming)
+  const updateLastMessage = useCallback((content) => {
+    if (!activeId) return
+
+    setConversations(prev => prev.map(conv => {
+      if (conv.id !== activeId) return conv
+      if (conv.messages.length === 0) return conv
+
+      const messages = [...conv.messages]
+      messages[messages.length - 1] = {
+        ...messages[messages.length - 1],
+        content,
+      }
+
+      return {
+        ...conv,
+        messages,
+        updatedAt: new Date().toISOString(),
+      }
+    }))
+  }, [activeId])
+
   return {
     conversations,
     activeConversation,
@@ -148,6 +170,7 @@ export function useConversations() {
     createConversation,
     selectConversation,
     addMessage,
+    updateLastMessage,
     deleteConversation,
     clearAllConversations,
     setActiveMessages,

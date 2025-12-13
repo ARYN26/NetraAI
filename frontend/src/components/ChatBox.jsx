@@ -49,8 +49,8 @@ export default function ChatBox({ messages, isLoading }) {
           <Message key={message.id} message={message} />
         ))}
 
-        {/* Loading indicator */}
-        {isLoading && (
+        {/* Loading indicator - only show if no streaming content yet */}
+        {isLoading && messages.length > 0 && !messages[messages.length - 1]?.text && (
           <div className="flex items-start gap-4 max-w-2xl">
             <div className="flex-shrink-0 size-8 rounded-full flex items-center justify-center text-primary bg-primary/20">
               <span

@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './Sidebar'
 import ChatBox from './ChatBox'
 import InputArea from './InputArea'
 import Tutorial from './Tutorial'
 import { useConversations } from '../hooks/useConversations'
-import { sendChatMessage } from '../services/api'
+import { sendChatMessageStream } from '../services/api'
 
 /**
  * ChatPage - Main chat interface with sidebar (matches template)
@@ -18,9 +18,13 @@ export default function ChatPage({ onBackToLanding }) {
     createConversation,
     selectConversation,
     addMessage,
+    updateLastMessage,
     deleteConversation,
     clearAllConversations,
   } = useConversations()
+
+  // Ref for abort controller (allows canceling streaming requests)
+  const abortControllerRef = useRef(null)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -56,24 +60,72 @@ export default function ChatPage({ onBackToLanding }) {
     timestamp: msg.timestamp,
   }))
 
-  // Handle sending a message
+  // Handle sending a message with streaming
   const handleSend = useCallback(async (input) => {
     if (!input.trim() || isLoading) return
+
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+
+    const isFirstMessage = messages.length === 0
+
+    // Add one-time welcome/warning on first message
+    if (isFirstMessage) {
+      addMessage('assistant',
+        'Namaste. I share tantric wisdom for educational purposes only. ' +
+        'Always consult qualified teachers for spiritual practices. ' +
+        'Improper practice can be harmful. Proceed with reverence.'
+      )
+    }
 
     addMessage('user', input)
     setIsLoading(true)
     setError(null)
 
-    try {
-      const response = await sendChatMessage(input)
-      addMessage('assistant', response.response)
-    } catch (err) {
-      console.error('Chat error:', err)
-      setError(err.message || 'Failed to get response')
-    } finally {
-      setIsLoading(false)
+    // Add empty assistant message for streaming
+    addMessage('assistant', '')
+
+    let fullResponse = ''
+
+    await sendChatMessageStream(
+      input,
+      // onChunk - append each chunk
+      (chunk) => {
+        fullResponse += chunk
+        updateLastMessage(fullResponse)
+      },
+      // onDone - add sources if available
+      (sources) => {
+        if (sources && sources.length > 0) {
+          fullResponse += `\n\n📚 Sources: ${sources.join(', ')}`
+          updateLastMessage(fullResponse)
+        }
+        setIsLoading(false)
+        abortControllerRef.current = null
+      },
+      // onError
+      (err) => {
+        console.error('Chat error:', err)
+        setError(err.message || 'Failed to get response')
+        updateLastMessage('The connection to the Akasha is disrupted. Please try again.')
+        setIsLoading(false)
+        abortControllerRef.current = null
+      },
+      abortControllerRef.current.signal
+    )
+  }, [addMessage, updateLastMessage, isLoading, messages.length])
+
+  // Handle stopping the current request
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
     }
-  }, [addMessage, isLoading])
+    setIsLoading(false)
+  }, [])
 
   // Handle new chat
   const handleNewChat = useCallback(() => {
@@ -147,7 +199,7 @@ export default function ChatPage({ onBackToLanding }) {
         <ChatBox messages={chatMessages} isLoading={isLoading} />
 
         {/* Input Area */}
-        <InputArea onSend={handleSend} isLoading={isLoading} />
+        <InputArea onSend={handleSend} onStop={handleStop} isLoading={isLoading} />
       </div>
 
       {/* Tutorial Modal for first-time users */}
