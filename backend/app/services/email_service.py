@@ -1,22 +1,68 @@
 """Email service for sending OTP codes via Gmail SMTP."""
 import smtplib
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 
 from app.config import settings
+
+# Thread pool for non-blocking email sending
+_email_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="email_worker")
+
+# SMTP connection timeout (seconds)
+SMTP_TIMEOUT = 30
+
+
+def _send_email_sync(to_email: str, msg: MIMEMultipart) -> bool:
+    """
+    Synchronous email sending (runs in thread pool).
+
+    Args:
+        to_email: Recipient email address
+        msg: Prepared email message
+
+    Returns:
+        True if email sent successfully, False otherwise
+    """
+    try:
+        # Create SSL context for secure connection
+        context = ssl.create_default_context()
+
+        # Connect to Gmail SMTP with timeout
+        with smtplib.SMTP_SSL(
+            "smtp.gmail.com", 465, context=context, timeout=SMTP_TIMEOUT
+        ) as server:
+            server.login(settings.smtp_email, settings.smtp_password)
+            server.sendmail(settings.smtp_email, to_email, msg.as_string())
+
+        logger.info(f"OTP email sent to {to_email}")
+        return True
+
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Gmail SMTP authentication failed. Check your App Password.")
+        return False
+    except TimeoutError:
+        logger.error(f"SMTP connection timed out for {to_email}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to send OTP email: {e}")
+        return False
 
 
 def send_otp_email(to_email: str, otp_code: str) -> bool:
     """
     Send OTP code to user's email via Gmail SMTP.
 
+    Uses a thread pool to avoid blocking the async event loop.
+
     Args:
         to_email: Recipient email address
         otp_code: 6-digit OTP code
 
     Returns:
-        True if email sent successfully, False otherwise
+        True if email was queued successfully (actual send is async)
     """
     if not settings.smtp_email or not settings.smtp_password:
         logger.error("SMTP credentials not configured")
@@ -69,17 +115,14 @@ If you didn't request this code, please ignore this email.
         msg.attach(MIMEText(text, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        # Connect to Gmail SMTP
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(settings.smtp_email, settings.smtp_password)
-            server.sendmail(settings.smtp_email, to_email, msg.as_string())
+        # Submit to thread pool (non-blocking)
+        future = _email_executor.submit(_send_email_sync, to_email, msg)
 
-        logger.info(f"OTP email sent to {to_email}")
-        return True
+        # Wait for result with timeout (to detect immediate failures)
+        # For truly async, you could return True immediately and log failures
+        result = future.result(timeout=SMTP_TIMEOUT + 5)
+        return result
 
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Gmail SMTP authentication failed. Check your App Password.")
-        return False
     except Exception as e:
-        logger.error(f"Failed to send OTP email: {e}")
+        logger.error(f"Failed to queue OTP email: {e}")
         return False

@@ -25,9 +25,9 @@ class Settings(BaseSettings):
     otp_expiry_minutes: int = 5
 
     # JWT Authentication
-    jwt_secret_key: str = "netra-secret-key-change-in-production-12345"
+    jwt_secret_key: str = ""  # MUST be set via environment variable
     jwt_algorithm: str = "HS256"
-    jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    jwt_access_token_expire_minutes: int = 60  # 1 hour (was 7 days - security risk)
 
     # Environment (development or production)
     environment: str = "development"
@@ -35,12 +35,21 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret_key")
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
-        """Validate JWT secret key is not the default in production."""
-        default_key = "netra-secret-key-change-in-production-12345"
-        env = os.getenv("ENVIRONMENT", "development").lower()
-        if v == default_key and env == "production":
+        """Validate JWT secret key is set and sufficiently long."""
+        if not v or len(v) < 32:
             raise ValueError(
-                "JWT_SECRET_KEY must be changed in production! "
+                "JWT_SECRET_KEY must be set and at least 32 characters! "
+                "Generate a secure key with: openssl rand -hex 32"
+            )
+        # Reject known weak defaults
+        weak_defaults = [
+            "netra-secret-key-change-in-production-12345",
+            "secret",
+            "changeme",
+        ]
+        if v.lower() in weak_defaults:
+            raise ValueError(
+                "JWT_SECRET_KEY cannot be a known default value! "
                 "Generate a secure key with: openssl rand -hex 32"
             )
         return v

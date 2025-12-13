@@ -1,8 +1,10 @@
 """Authentication service - OTP-based authentication with JWT."""
-import random
+import secrets
 import string
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
+import threading
 
 from cachetools import TTLCache
 from jose import JWTError, jwt
@@ -27,6 +29,7 @@ from app.services.audit_logger import audit
 
 # Track failed OTP attempts per email (max 5 before lockout, 1 hour TTL)
 _failed_attempts: TTLCache = TTLCache(maxsize=10000, ttl=3600)
+_failed_attempts_lock = threading.Lock()
 
 
 # OAuth2 scheme for token extraction
@@ -34,8 +37,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/verify-otp", auto_error=Fal
 
 
 def generate_otp() -> str:
-    """Generate a 6-digit OTP code."""
-    return "".join(random.choices(string.digits, k=6))
+    """Generate a cryptographically secure 6-digit OTP code."""
+    return "".join(secrets.choice(string.digits) for _ in range(6))
+
+
+def hash_otp(code: str) -> str:
+    """Hash OTP code for secure storage using SHA-256."""
+    return hashlib.sha256(code.encode()).hexdigest()
 
 
 def request_otp(email: str) -> bool:
@@ -43,15 +51,17 @@ def request_otp(email: str) -> bool:
     Generate and send OTP to email.
 
     Returns True if OTP was sent successfully.
+    OTP is hashed before storage for security.
     """
     # Generate OTP
     otp_code = generate_otp()
     expires_at = datetime.utcnow() + timedelta(minutes=settings.otp_expiry_minutes)
 
-    # Save OTP to storage
-    save_otp(email, otp_code, expires_at)
+    # Hash OTP before storing (store hash, not plaintext)
+    otp_hash = hash_otp(otp_code)
+    save_otp(email, otp_hash, expires_at)
 
-    # Send email
+    # Send plaintext OTP to user's email
     success = send_otp_email(email, otp_code)
 
     if success:
@@ -69,30 +79,37 @@ def verify_otp(email: str, code: str, ip: str = "unknown") -> Optional[UserInDB]
     Returns the user if OTP is valid, None otherwise.
     Creates new user if they don't exist.
     Tracks failed attempts and locks out after 5 failures.
+    Uses thread-safe locking for rate limiting.
     """
     email_lower = email.lower()
 
-    # Check if locked out due to too many failed attempts
-    attempts = _failed_attempts.get(email_lower, 0)
-    if attempts >= 5:
-        audit.log_lockout(email, ip)
-        audit.log_suspicious_activity("OTP_BRUTE_FORCE", ip, f"email={email}")
-        logger.warning(f"Account locked out: {email} (too many failed attempts)")
-        return None
+    # Thread-safe check and increment for failed attempts
+    with _failed_attempts_lock:
+        attempts = _failed_attempts.get(email_lower, 0)
+        if attempts >= 5:
+            audit.log_lockout(email, ip)
+            audit.log_suspicious_activity("OTP_BRUTE_FORCE", ip, f"email={email}")
+            logger.warning(f"Account locked out: {email} (too many failed attempts)")
+            return None
 
     otp_entry = get_otp(email)
 
+    def record_failure():
+        """Record a failed attempt in a thread-safe manner."""
+        with _failed_attempts_lock:
+            current = _failed_attempts.get(email_lower, 0)
+            _failed_attempts[email_lower] = current + 1
+        audit.log_auth_attempt(email, False, ip)
+
     if not otp_entry:
         logger.warning(f"No OTP found for {email}")
-        _failed_attempts[email_lower] = attempts + 1
-        audit.log_auth_attempt(email, False, ip)
+        record_failure()
         return None
 
     # Check if already used
     if otp_entry.get("used", False):
         logger.warning(f"OTP already used for {email}")
-        _failed_attempts[email_lower] = attempts + 1
-        audit.log_auth_attempt(email, False, ip)
+        record_failure()
         return None
 
     # Check if expired
@@ -100,20 +117,20 @@ def verify_otp(email: str, code: str, ip: str = "unknown") -> Optional[UserInDB]
     if datetime.utcnow() > expires_at:
         logger.warning(f"OTP expired for {email}")
         delete_otp(email)
-        _failed_attempts[email_lower] = attempts + 1
-        audit.log_auth_attempt(email, False, ip)
+        record_failure()
         return None
 
-    # Check code
-    if otp_entry["code"] != code:
+    # Check code by comparing hashes (constant-time comparison)
+    code_hash = hash_otp(code)
+    if not secrets.compare_digest(otp_entry["code"], code_hash):
         logger.warning(f"Invalid OTP code for {email}")
-        _failed_attempts[email_lower] = attempts + 1
-        audit.log_auth_attempt(email, False, ip)
+        record_failure()
         return None
 
     # OTP is valid - delete it and clear failed attempts
     delete_otp(email)
-    _failed_attempts.pop(email_lower, None)
+    with _failed_attempts_lock:
+        _failed_attempts.pop(email_lower, None)
 
     # Get or create user
     user = get_user_by_email(email)

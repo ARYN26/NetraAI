@@ -4,26 +4,58 @@
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Default request timeout (30 seconds)
+const REQUEST_TIMEOUT_MS = 30000
+
+/**
+ * Fetch with timeout support
+ * @param {string} url - URL to fetch
+ * @param {object} options - Fetch options
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 /**
  * Send a chat message to Netra (non-streaming)
  * @param {string} question - The question to ask
  * @returns {Promise<{response: string, context_used: string, sources: string[]}>}
  */
 export async function sendChatMessage(question) {
-  const response = await fetch(`${API_URL}/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ question }),
-  })
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ question }),
+    })
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP error: ${response.status}`)
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw new Error(error.detail || `HTTP error: ${response.status}`)
+    }
+
+    return response.json()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.')
+    }
+    throw err
   }
-
-  return response.json()
 }
 
 /**
@@ -34,6 +66,10 @@ export async function sendChatMessage(question) {
  * @param {function} onError - Callback for errors
  */
 export async function sendChatMessageStream(question, onChunk, onDone, onError) {
+  const controller = new AbortController()
+  // Longer timeout for streaming (2 minutes)
+  const timeoutId = setTimeout(() => controller.abort(), 120000)
+
   try {
     const response = await fetch(`${API_URL}/chat/stream`, {
       method: 'POST',
@@ -41,6 +77,7 @@ export async function sendChatMessageStream(question, onChunk, onDone, onError) 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ question }),
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -78,7 +115,13 @@ export async function sendChatMessageStream(question, onChunk, onDone, onError) 
       }
     }
   } catch (err) {
-    onError(err)
+    if (err.name === 'AbortError') {
+      onError(new Error('Request timed out. Please try again.'))
+    } else {
+      onError(err)
+    }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -88,20 +131,28 @@ export async function sendChatMessageStream(question, onChunk, onDone, onError) 
  * @returns {Promise<{status: string, message: string, chunks_added: number}>}
  */
 export async function ingestUrl(url) {
-  const response = await fetch(`${API_URL}/learn`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ url }),
-  })
+  try {
+    // Longer timeout for URL ingestion (60 seconds)
+    const response = await fetchWithTimeout(`${API_URL}/learn`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
+    }, 60000)
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP error: ${response.status}`)
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw new Error(error.detail || `HTTP error: ${response.status}`)
+    }
+
+    return response.json()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.')
+    }
+    throw err
   }
-
-  return response.json()
 }
 
 /**
@@ -109,13 +160,20 @@ export async function ingestUrl(url) {
  * @returns {Promise<{status: string, version: string, llm_provider: string}>}
  */
 export async function getHealth() {
-  const response = await fetch(`${API_URL}/health`)
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/health`, {}, 10000)
 
-  if (!response.ok) {
-    throw new Error(`Health check failed: ${response.status}`)
+    if (!response.ok) {
+      throw new Error(`Health check failed: ${response.status}`)
+    }
+
+    return response.json()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Health check timed out')
+    }
+    throw err
   }
-
-  return response.json()
 }
 
 /**
@@ -123,11 +181,18 @@ export async function getHealth() {
  * @returns {Promise<{total_chunks: number, total_sources: number, collection_name: string}>}
  */
 export async function getStats() {
-  const response = await fetch(`${API_URL}/stats`)
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/stats`)
 
-  if (!response.ok) {
-    throw new Error(`Stats fetch failed: ${response.status}`)
+    if (!response.ok) {
+      throw new Error(`Stats fetch failed: ${response.status}`)
+    }
+
+    return response.json()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Stats request timed out')
+    }
+    throw err
   }
-
-  return response.json()
 }

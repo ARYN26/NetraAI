@@ -85,7 +85,12 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    // Clear authentication data
     localStorage.removeItem('netra-token')
+    // Clear conversation history (security: don't leave data for next user)
+    localStorage.removeItem('netra-conversations')
+    // Clear any other app state
+    localStorage.removeItem('netra-sidebar-collapsed')
     setToken(null)
     setUser(null)
   }

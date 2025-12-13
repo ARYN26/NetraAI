@@ -1,5 +1,6 @@
 """API route handlers for Netra."""
 import json
+import threading
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -21,33 +22,43 @@ from app.services.auth_service import get_current_active_user
 
 router = APIRouter()
 
-# Initialize services (lazy loading)
+# Thread-safe lazy initialization of services
 _knowledge_base = None
 _ai_brain = None
 _response_cache = None
+_init_lock = threading.Lock()
 
 
 def get_response_cache() -> ResponseCache:
-    """Get or create ResponseCache instance."""
+    """Get or create ResponseCache instance (thread-safe)."""
     global _response_cache
     if _response_cache is None:
-        _response_cache = ResponseCache()
+        with _init_lock:
+            # Double-check after acquiring lock
+            if _response_cache is None:
+                _response_cache = ResponseCache()
     return _response_cache
 
 
 def get_knowledge_base() -> KnowledgeBase:
-    """Get or create KnowledgeBase instance."""
+    """Get or create KnowledgeBase instance (thread-safe)."""
     global _knowledge_base
     if _knowledge_base is None:
-        _knowledge_base = KnowledgeBase()
+        with _init_lock:
+            # Double-check after acquiring lock
+            if _knowledge_base is None:
+                _knowledge_base = KnowledgeBase()
     return _knowledge_base
 
 
 def get_ai_brain() -> AIBrain:
-    """Get or create AIBrain instance."""
+    """Get or create AIBrain instance (thread-safe)."""
     global _ai_brain
     if _ai_brain is None:
-        _ai_brain = AIBrain()
+        with _init_lock:
+            # Double-check after acquiring lock
+            if _ai_brain is None:
+                _ai_brain = AIBrain()
     return _ai_brain
 
 
@@ -153,8 +164,13 @@ async def chat(request: Request, body: ChatRequest):
         return response
 
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate response: {str(e)}")
+        # Log full error details server-side only
+        logger.error(f"Chat error: {e}", exc_info=True)
+        # Return generic message to client (don't leak internal details)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while processing your request. Please try again."
+        )
 
 
 @router.post("/chat/stream", tags=["Chat"])
@@ -199,8 +215,9 @@ async def chat_stream(request: Request, body: ChatRequest):
             # Send completion signal with sources
             yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
         except Exception as e:
-            logger.error(f"Stream error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            # Log full error server-side, send generic message to client
+            logger.error(f"Stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'error': 'An error occurred while generating the response.'})}\n\n"
 
     return StreamingResponse(
         generate_stream(),
