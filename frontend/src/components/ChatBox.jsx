@@ -24,23 +24,16 @@ export default function ChatBox({ messages, isLoading }) {
       />
 
       <div className="relative z-10 p-4 md:p-6 lg:p-8 space-y-8">
-        {/* Empty state */}
+        {/* Empty state - subtle prompt */}
         {messages.length === 0 && !isLoading && (
-          <div className="flex items-start gap-4 max-w-2xl">
-            <div className="flex-shrink-0 size-8 rounded-full flex items-center justify-center text-primary bg-primary/20">
-              <span
-                className="material-symbols-outlined text-xl"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                visibility
-              </span>
-            </div>
-            <div className="bg-white/5 rounded-lg rounded-tl-none p-4 w-full">
-              <p className="text-gray-300">
-                Greetings. I am Netra. How may I illuminate your path today? Ask me about the ancient
-                wisdom of tantra and meditation.
-              </p>
-            </div>
+          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center">
+            <span
+              className="material-symbols-outlined text-6xl text-primary/30 mb-4"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              visibility
+            </span>
+            <p className="text-gray-500 text-sm">Ask Netra about tantric wisdom...</p>
           </div>
         )}
 

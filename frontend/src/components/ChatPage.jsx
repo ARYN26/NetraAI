@@ -3,6 +3,7 @@ import Sidebar from './Sidebar'
 import ChatBox from './ChatBox'
 import InputArea from './InputArea'
 import Tutorial from './Tutorial'
+import DisclaimerModal from './DisclaimerModal'
 import { useConversations } from '../hooks/useConversations'
 import { sendChatMessageStream } from '../services/api'
 
@@ -28,6 +29,7 @@ export default function ChatPage({ onBackToLanding }) {
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [showDisclaimer, setShowDisclaimer] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('netra-sidebar-collapsed')
     return saved === 'true'
@@ -52,6 +54,13 @@ export default function ChatPage({ onBackToLanding }) {
   // Get current messages
   const messages = activeConversation?.messages || []
 
+  // Show disclaimer when switching to an empty conversation
+  useEffect(() => {
+    if (messages.length === 0 && activeId) {
+      setShowDisclaimer(true)
+    }
+  }, [activeId, messages.length])
+
   // Transform messages for ChatBox
   const chatMessages = messages.map((msg, index) => ({
     id: `${activeId}_${index}`,
@@ -69,17 +78,6 @@ export default function ChatPage({ onBackToLanding }) {
       abortControllerRef.current.abort()
     }
     abortControllerRef.current = new AbortController()
-
-    const isFirstMessage = messages.length === 0
-
-    // Add one-time welcome/warning on first message
-    if (isFirstMessage) {
-      addMessage('assistant',
-        'Namaste. I share tantric wisdom for educational purposes only. ' +
-        'Always consult qualified teachers for spiritual practices. ' +
-        'Improper practice can be harmful. Proceed with reverence.'
-      )
-    }
 
     addMessage('user', input)
     setIsLoading(true)
@@ -116,7 +114,7 @@ export default function ChatPage({ onBackToLanding }) {
       },
       abortControllerRef.current.signal
     )
-  }, [addMessage, updateLastMessage, isLoading, messages.length])
+  }, [addMessage, updateLastMessage, isLoading])
 
   // Handle stopping the current request
   const handleStop = useCallback(() => {
@@ -131,6 +129,11 @@ export default function ChatPage({ onBackToLanding }) {
   const handleNewChat = useCallback(() => {
     createConversation()
   }, [createConversation])
+
+  // Handle disclaimer acceptance
+  const handleAcceptDisclaimer = useCallback(() => {
+    setShowDisclaimer(false)
+  }, [])
 
   if (!isLoaded) {
     return (
@@ -204,6 +207,9 @@ export default function ChatPage({ onBackToLanding }) {
 
       {/* Tutorial Modal for first-time users */}
       <Tutorial />
+
+      {/* Disclaimer Modal for each new conversation */}
+      <DisclaimerModal isOpen={showDisclaimer} onAccept={handleAcceptDisclaimer} />
     </div>
   )
 }
