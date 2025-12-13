@@ -1,8 +1,9 @@
 /**
  * Individual chat message component (matches template)
  */
-export default function Message({ message }) {
+export default function Message({ message, isStreaming = false }) {
   const isBot = message.role === 'bot'
+  const showLoadingDots = isBot && isStreaming && !message.text
 
   return (
     <div className={`flex items-start gap-4 ${!isBot ? 'justify-end' : ''}`}>
@@ -26,9 +27,17 @@ export default function Message({ message }) {
             : 'bg-primary/20 rounded-lg rounded-br-none'
         }`}
       >
-        <p className={`whitespace-pre-wrap ${isBot ? 'text-gray-300' : 'text-gray-200'}`}>
-          {message.text}
-        </p>
+        {showLoadingDots ? (
+          <div className="flex items-center gap-1">
+            <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
+            <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
+            <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
+          </div>
+        ) : (
+          <p className={`whitespace-pre-wrap ${isBot ? 'text-gray-300' : 'text-gray-200'}`}>
+            {message.text}
+          </p>
+        )}
       </div>
     </div>
   )

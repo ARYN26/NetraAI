@@ -45,30 +45,13 @@ export default function ChatBox({ messages, isLoading }) {
         )}
 
         {/* Messages */}
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
+        {messages.map((message, index) => (
+          <Message
+            key={message.id}
+            message={message}
+            isStreaming={isLoading && index === messages.length - 1 && message.role === 'bot'}
+          />
         ))}
-
-        {/* Loading indicator - only show if no streaming content yet */}
-        {isLoading && messages.length > 0 && !messages[messages.length - 1]?.text && (
-          <div className="flex items-start gap-4 max-w-2xl">
-            <div className="flex-shrink-0 size-8 rounded-full flex items-center justify-center text-primary bg-primary/20">
-              <span
-                className="material-symbols-outlined text-xl"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                visibility
-              </span>
-            </div>
-            <div className="bg-white/5 rounded-lg rounded-tl-none p-4">
-              <div className="flex items-center gap-1">
-                <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
-                <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
-                <span className="loading-dot w-2 h-2 bg-primary rounded-full" />
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Scroll anchor */}
         <div ref={bottomRef} />
