@@ -1,6 +1,23 @@
 """Pydantic schemas for API requests and responses."""
 from typing import List, Optional
-from pydantic import BaseModel, HttpUrl, Field
+from urllib.parse import urlparse
+from pydantic import BaseModel, HttpUrl, Field, field_validator
+
+
+# Allowed domains for URL ingestion (SSRF protection)
+ALLOWED_URL_DOMAINS = [
+    "sacred-texts.com",
+    "wisdomlib.org",
+    "archive.org",
+    "hinduwebsite.com",
+    "swamij.com",
+    "yogananda.com.au",
+    "sivanandaonline.org",
+    "dlshq.org",
+    "ramakrishnavivekananda.info",
+    "estudantedavedanta.net",
+    "sriaurobindoashram.org",
+]
 
 
 class ChatRequest(BaseModel):
@@ -37,6 +54,44 @@ class LearnRequest(BaseModel):
         description="URL of the scripture page to ingest",
         examples=["https://sacred-texts.com/tantra/page.html"],
     )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_domain(cls, v):
+        """
+        Validate URL is from allowed domains (SSRF protection).
+
+        Prevents attackers from using the /learn endpoint to:
+        - Scan internal networks (localhost, 192.168.x.x, etc.)
+        - Access cloud metadata endpoints (169.254.169.254)
+        - Probe internal services
+        """
+        parsed = urlparse(str(v))
+        hostname = parsed.netloc.lower()
+
+        # Block private/internal addresses
+        blocked_patterns = [
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "169.254.",  # AWS metadata
+            "10.",  # Private network
+            "192.168.",  # Private network
+            "172.16.",  # Private network
+        ]
+        for pattern in blocked_patterns:
+            if hostname.startswith(pattern) or pattern in hostname:
+                raise ValueError(f"Internal URLs are not allowed: {hostname}")
+
+        # Check against whitelist
+        if not any(hostname.endswith(domain) for domain in ALLOWED_URL_DOMAINS):
+            allowed_list = ", ".join(ALLOWED_URL_DOMAINS[:3]) + "..."
+            raise ValueError(
+                f"URL domain '{hostname}' not in allowed list. "
+                f"Allowed domains include: {allowed_list}"
+            )
+
+        return v
 
 
 class LearnResponse(BaseModel):
