@@ -1,5 +1,7 @@
 """API route handlers for Netra."""
+import json
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from app import __version__
@@ -84,9 +86,8 @@ async def get_cache_stats(current_user: UserInDB = Depends(get_current_active_us
 
 # Off-topic response message
 OFF_TOPIC_RESPONSE = (
-    "I am Netra, devoted to the wisdom of Tantra and spiritual practices. "
-    "This question falls outside my realm of knowledge. "
-    "Please ask about mantras, meditation, yoga, or spiritual teachings."
+    "This question falls outside my area of knowledge. "
+    "I can help with mantras, meditation, yoga, tantra, and spiritual teachings from the scriptures."
 )
 
 
@@ -154,3 +155,58 @@ async def chat(request: Request, body: ChatRequest):
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate response: {str(e)}")
+
+
+@router.post("/chat/stream", tags=["Chat"])
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def chat_stream(request: Request, body: ChatRequest):
+    """
+    Stream a response to the user's question.
+
+    Returns Server-Sent Events (SSE) with chunks of the response.
+    """
+    logger.info(f"Stream chat request: {body.question[:50]}...")
+
+    kb = get_knowledge_base()
+    brain = get_ai_brain()
+
+    # Search for relevant context
+    context, sources, best_distance = kb.search(body.question)
+
+    # Check if off-topic
+    if best_distance > settings.relevance_threshold or not context:
+        logger.info(f"Off-topic question rejected (distance: {best_distance:.3f})")
+
+        async def off_topic_stream():
+            # Send off-topic response as single chunk
+            yield f"data: {json.dumps({'chunk': OFF_TOPIC_RESPONSE})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+
+        return StreamingResponse(
+            off_topic_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+
+    # Stream the response
+    def generate_stream():
+        try:
+            for chunk in brain.generate_response_stream(body.question, context):
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            # Send completion signal with sources
+            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )

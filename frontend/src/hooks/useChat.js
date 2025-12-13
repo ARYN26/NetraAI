@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { sendChatMessage, ingestUrl as apiIngestUrl } from '../services/api'
+import { useState, useCallback, useRef } from 'react'
+import { sendChatMessageStream, ingestUrl as apiIngestUrl } from '../services/api'
 
 /**
  * Custom hook for chat functionality
@@ -15,6 +15,7 @@ export function useChat() {
   ])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const streamingMessageId = useRef(null)
 
   /**
    * Add a message to the chat
@@ -31,7 +32,16 @@ export function useChat() {
   }, [])
 
   /**
-   * Send a chat message
+   * Update a message by ID
+   */
+  const updateMessage = useCallback((id, text) => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === id ? { ...msg, text } : msg))
+    )
+  }, [])
+
+  /**
+   * Send a chat message with streaming
    */
   const sendMessage = useCallback(async (question) => {
     setError(null)
@@ -40,24 +50,42 @@ export function useChat() {
     addMessage('user', question)
     setIsLoading(true)
 
-    try {
-      const response = await sendChatMessage(question)
+    // Create empty bot message for streaming
+    const botMessageId = Date.now()
+    streamingMessageId.current = botMessageId
+    setMessages((prev) => [
+      ...prev,
+      { id: botMessageId, role: 'bot', text: '', timestamp: new Date() },
+    ])
 
-      // Format response with sources if available
-      let responseText = response.response
-      if (response.sources && response.sources.length > 0) {
-        responseText += `\n\n📚 Sources: ${response.sources.join(', ')}`
+    let fullResponse = ''
+
+    await sendChatMessageStream(
+      question,
+      // onChunk - append each chunk to the message
+      (chunk) => {
+        fullResponse += chunk
+        updateMessage(botMessageId, fullResponse)
+      },
+      // onDone - add sources if available
+      (sources) => {
+        if (sources && sources.length > 0) {
+          fullResponse += `\n\n📚 Sources: ${sources.join(', ')}`
+          updateMessage(botMessageId, fullResponse)
+        }
+        setIsLoading(false)
+        streamingMessageId.current = null
+      },
+      // onError
+      (err) => {
+        console.error('Chat error:', err)
+        setError(err.message || 'Failed to get response')
+        updateMessage(botMessageId, 'The connection to the Akasha is disrupted. Please try again.')
+        setIsLoading(false)
+        streamingMessageId.current = null
       }
-
-      addMessage('bot', responseText)
-    } catch (err) {
-      console.error('Chat error:', err)
-      setError(err.message || 'Failed to get response')
-      addMessage('bot', 'The connection to the Akasha is disrupted. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [addMessage])
+    )
+  }, [addMessage, updateMessage])
 
   /**
    * Ingest a URL into the knowledge base
